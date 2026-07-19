@@ -1,8 +1,7 @@
 name: "seekrit — load secrets"
 description: >-
   Resolve and decrypt your seekrit secrets and inject them into the job's
-  environment. Zero-knowledge: decryption happens on the runner, the API never
-  sees plaintext.
+  environment.
 author: "seekrit"
 branding:
   icon: "lock"
