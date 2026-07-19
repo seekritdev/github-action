@@ -1,0 +1,66 @@
+name: "seekrit — load secrets"
+description: >-
+  Resolve and decrypt your seekrit secrets and inject them into the job's
+  environment. Zero-knowledge: decryption happens on the runner, the API never
+  sees plaintext.
+author: "seekrit"
+branding:
+  icon: "lock"
+  color: "purple"
+
+inputs:
+  token:
+    description: >-
+      seekrit service token (skt_…). Store it as an encrypted repository or
+      organization secret and pass it as ${{ secrets.SEEKRIT_TOKEN }}. The token
+      is bound to one application environment, so no app/env inputs are needed.
+    required: true
+  api-url:
+    description: "seekrit API base URL."
+    required: false
+    default: "https://api.seekrit.dev"
+  with:
+    description: >-
+      Optional group→environment overrides, one "group:env" per line (or
+      comma-separated). Mirrors the CLI's --with.
+    required: false
+    default: ""
+  export-env:
+    description: >-
+      Inject each resolved secret into $GITHUB_ENV so subsequent steps see it as
+      an environment variable.
+    required: false
+    default: "true"
+  set-outputs:
+    description: >-
+      Also expose each resolved secret as a step output
+      (steps.<id>.outputs.<NAME>). Off by default — prefer masked env vars.
+    required: false
+    default: "false"
+  mask:
+    description: >-
+      Register every value with the runner (::add-mask::) so it is redacted from
+      logs. Strongly recommended; leave on unless you have a specific reason.
+    required: false
+    default: "true"
+  prefix:
+    description: "Optional string prepended to every injected variable name."
+    required: false
+    default: ""
+  include:
+    description: >-
+      If set, inject only these secret names (comma/newline separated).
+    required: false
+    default: ""
+  exclude:
+    description: "Secret names to skip (comma/newline separated)."
+    required: false
+    default: ""
+
+outputs:
+  secrets-count:
+    description: "Number of secrets injected."
+
+runs:
+  using: "node20"
+  main: "dist/index.js"
