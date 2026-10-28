@@ -72,6 +72,9 @@ function setSecret(value) {
 function info(message) {
   process.stdout.write(message + EOL);
 }
+function warning(message) {
+  issueCommand("warning", {}, message);
+}
 function setFailed(message) {
   process.exitCode = 1;
   issueCommand("error", {}, message);
@@ -218,6 +221,70 @@ function readConfig() {
   };
 }
 
+// src/interpolate.ts
+var REFERENCE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+var MAX_EXPANDED_LENGTH = 1048576;
+function* scan(text) {
+  let i = 0;
+  while (i < text.length) {
+    const dollar = text.indexOf("$", i);
+    if (dollar === -1) {
+      yield { literal: text.slice(i) };
+      return;
+    }
+    if (dollar > i) yield { literal: text.slice(i, dollar) };
+    if (text[dollar + 1] === "$" && text[dollar + 2] === "{") {
+      yield { literal: "${" };
+      i = dollar + 3;
+      continue;
+    }
+    const close = text[dollar + 1] === "{" ? text.indexOf("}", dollar + 2) : -1;
+    const reference = close === -1 ? null : text.slice(dollar + 2, close);
+    if (reference !== null && REFERENCE_NAME.test(reference)) {
+      yield { reference, raw: text.slice(dollar, close + 1) };
+      i = close + 1;
+      continue;
+    }
+    yield { literal: "$" };
+    i = dollar + 1;
+  }
+}
+function interpolateSecrets(values) {
+  const resolved = /* @__PURE__ */ new Map();
+  const unresolved = /* @__PURE__ */ new Set();
+  const stack = [];
+  function resolve(name) {
+    const cached = resolved.get(name);
+    if (cached !== void 0) return cached;
+    const cycleAt = stack.indexOf(name);
+    if (cycleAt !== -1) {
+      const chain = [...stack.slice(cycleAt), name];
+      throw new Error(`secret reference cycle: ${chain.join(" -> ")}`);
+    }
+    stack.push(name);
+    let out = "";
+    for (const segment of scan(values[name])) {
+      if ("literal" in segment) {
+        out += segment.literal;
+      } else if (Object.hasOwn(values, segment.reference)) {
+        out += resolve(segment.reference);
+      } else {
+        unresolved.add(segment.reference);
+        out += segment.raw;
+      }
+    }
+    stack.pop();
+    if (out.length > MAX_EXPANDED_LENGTH) {
+      throw new Error(`${name} expands to more than ${MAX_EXPANDED_LENGTH} bytes`);
+    }
+    resolved.set(name, out);
+    return out;
+  }
+  const result = {};
+  for (const name of Object.keys(values)) result[name] = resolve(name);
+  return { values: result, unresolved: [...unresolved].sort() };
+}
+
 // src/materialize.ts
 async function materialize(resolved, privateKey) {
   const values = {};
@@ -234,7 +301,8 @@ async function materialize(resolved, privateKey) {
       provenance[secret.name] = label;
     }
   }
-  return { values, provenance };
+  const { values: expanded, unresolved } = interpolateSecrets(values);
+  return { values: expanded, provenance, unresolved };
 }
 function filterValues(values, include, exclude) {
   const allow = include.length > 0 ? new Set(include) : null;
@@ -299,7 +367,10 @@ async function run() {
     token: config.token,
     overrides: config.overrides
   });
-  const { values } = await materialize(resolved, privateKey);
+  const { values, unresolved } = await materialize(resolved, privateKey);
+  if (unresolved.length > 0) {
+    warning(`seekrit: unresolved reference(s), left as literal text: ${unresolved.join(", ")}`);
+  }
   const selected = filterValues(values, config.include, config.exclude);
   const names = Object.keys(selected).sort();
   if (config.mask) {

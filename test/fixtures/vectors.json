@@ -61,5 +61,165 @@
     "UNICODE": "héllo-🌍-\n-tab\tend",
     "API_KEY": "sk-app-12345",
     "EMPTY": ""
+  },
+  "interpolation": {
+    "cases": [
+      {
+        "name": "substitutes a reference",
+        "input": {
+          "HOST": "db.internal",
+          "URL": "postgres://app@${HOST}:5432/db"
+        },
+        "expected": {
+          "HOST": "db.internal",
+          "URL": "postgres://app@db.internal:5432/db"
+        },
+        "unresolved": []
+      },
+      {
+        "name": "expands recursively, repeats, and forward references",
+        "input": {
+          "ADDR": "${HOST}:${PORT}",
+          "HOST": "db.internal",
+          "PORT": "5432",
+          "PAIR": "${ADDR}|${ADDR}"
+        },
+        "expected": {
+          "ADDR": "db.internal:5432",
+          "HOST": "db.internal",
+          "PORT": "5432",
+          "PAIR": "db.internal:5432|db.internal:5432"
+        },
+        "unresolved": []
+      },
+      {
+        "name": "leaves unknown references literal and reports them",
+        "input": {
+          "TAG": "build-${GITHUB_SHA}",
+          "OTHER": "${NOPE}-${GITHUB_SHA}"
+        },
+        "expected": {
+          "TAG": "build-${GITHUB_SHA}",
+          "OTHER": "${NOPE}-${GITHUB_SHA}"
+        },
+        "unresolved": [
+          "GITHUB_SHA",
+          "NOPE"
+        ]
+      },
+      {
+        "name": "expands around an unknown reference",
+        "input": {
+          "HOST": "db.internal",
+          "URL": "${HOST}/${MISSING}"
+        },
+        "expected": {
+          "HOST": "db.internal",
+          "URL": "db.internal/${MISSING}"
+        },
+        "unresolved": [
+          "MISSING"
+        ]
+      },
+      {
+        "name": "$${NAME} escapes to a literal ${NAME}",
+        "input": {
+          "NAME": "expanded",
+          "TEMPLATE": "$${NAME} stays, ${NAME} goes"
+        },
+        "expected": {
+          "NAME": "expanded",
+          "TEMPLATE": "${NAME} stays, expanded goes"
+        },
+        "unresolved": []
+      },
+      {
+        "name": "leaves shell-style, non-name, and unterminated forms alone",
+        "input": {
+          "FOO": "value",
+          "DEFAULTED": "${FOO:-fallback}",
+          "POSITIONAL": "${1}",
+          "DOTTED": "${a.b}",
+          "EMPTY_REF": "${}",
+          "UNTERMINATED": "${FOO",
+          "PASSWORD": "p$$w0rd$"
+        },
+        "expected": {
+          "FOO": "value",
+          "DEFAULTED": "${FOO:-fallback}",
+          "POSITIONAL": "${1}",
+          "DOTTED": "${a.b}",
+          "EMPTY_REF": "${}",
+          "UNTERMINATED": "${FOO",
+          "PASSWORD": "p$$w0rd$"
+        },
+        "unresolved": []
+      },
+      {
+        "name": "recognizes a reference after an unterminated one",
+        "input": {
+          "A": "a",
+          "T": "${ ${A}"
+        },
+        "expected": {
+          "A": "a",
+          "T": "${ a"
+        },
+        "unresolved": []
+      },
+      {
+        "name": "handles empty values and multibyte text",
+        "input": {
+          "EMPTY": "",
+          "A": "héllo-🌍",
+          "T": "🌍${A}${EMPTY}🌍"
+        },
+        "expected": {
+          "EMPTY": "",
+          "A": "héllo-🌍",
+          "T": "🌍héllo-🌍🌍"
+        },
+        "unresolved": []
+      },
+      {
+        "name": "a diamond is not a cycle",
+        "input": {
+          "BASE": "b",
+          "LEFT": "${BASE}-l",
+          "RIGHT": "${BASE}-r",
+          "TOP": "${LEFT}+${RIGHT}"
+        },
+        "expected": {
+          "BASE": "b",
+          "LEFT": "b-l",
+          "RIGHT": "b-r",
+          "TOP": "b-l+b-r"
+        },
+        "unresolved": []
+      }
+    ],
+    "cycles": [
+      {
+        "name": "self reference",
+        "input": {
+          "A": "x${A}"
+        }
+      },
+      {
+        "name": "direct cycle",
+        "input": {
+          "A": "${B}",
+          "B": "${A}"
+        }
+      },
+      {
+        "name": "indirect cycle",
+        "input": {
+          "A": "${B}",
+          "B": "${C}",
+          "C": "${A}"
+        }
+      }
+    ]
   }
 }

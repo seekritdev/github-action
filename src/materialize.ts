@@ -5,18 +5,22 @@
  *   app-env secrets  >  group secrets   (later layers win)
  *
  * Each layer's DEK is unwrapped once with the principal's private key and its
- * ciphertexts decrypted locally. Values never leave the runner. A provenance
- * map (names only) records which layer each value came from, for logging.
+ * ciphertexts decrypted locally, then `${NAME}` references are expanded across
+ * the merged set. Values never leave the runner. A provenance map (names only)
+ * records which layer each value came from, for logging.
  */
 import type { webcrypto } from "node:crypto";
 import { decryptSecret, secretAad, unwrapDek } from "./crypto.js";
+import { interpolateSecrets } from "./interpolate.js";
 import type { ResolveResponse } from "./resolve.js";
 
 export interface Materialized {
-  /** Resolved variable name → plaintext value. */
+  /** Resolved variable name → plaintext value, references expanded. */
   values: Record<string, string>;
   /** Variable name → the layer it resolved from (names only; never values). */
   provenance: Record<string, string>;
+  /** Referenced names found nowhere in the set, left as literal text. */
+  unresolved: string[];
 }
 
 export async function materialize(
@@ -43,7 +47,9 @@ export async function materialize(
     }
   }
 
-  return { values, provenance };
+  // After the merge, so a reference picks up whichever layer won that name.
+  const { values: expanded, unresolved } = interpolateSecrets(values);
+  return { values: expanded, provenance, unresolved };
 }
 
 /**

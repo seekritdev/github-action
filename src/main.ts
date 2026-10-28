@@ -13,6 +13,7 @@ import {
   setFailed,
   setOutput,
   setSecret,
+  warning,
 } from "./actions.js";
 import { parseServiceToken } from "./crypto.js";
 import { readConfig } from "./inputs.js";
@@ -32,7 +33,10 @@ async function run(): Promise<void> {
     overrides: config.overrides,
   });
 
-  const { values } = await materialize(resolved, privateKey);
+  const { values, unresolved } = await materialize(resolved, privateKey);
+  if (unresolved.length > 0) {
+    warning(`seekrit: unresolved reference(s), left as literal text: ${unresolved.join(", ")}`);
+  }
   const selected = filterValues(values, config.include, config.exclude);
   const names = Object.keys(selected).sort();
 
