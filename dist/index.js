@@ -114,9 +114,19 @@ var TOKEN_PREFIX = "skt";
 function isServiceToken(value) {
   return value.startsWith(`${TOKEN_PREFIX}_`);
 }
+function serviceTokenAuth(token) {
+  const match = /^(skt_[0-9A-Za-z]+_v2\.[A-Za-z0-9_-]{43})(?:\.[A-Za-z0-9_-]+)?$/.exec(token);
+  const auth = match?.[1];
+  if (!match || match[0] !== token || !auth) {
+    throw new Error(
+      "a v2 service token is required for API access; replace legacy tokens in the dashboard"
+    );
+  }
+  return auth;
+}
 async function parseServiceToken(token) {
-  const match = /^(skt_[0-9A-Za-z]+)_([A-Za-z0-9_-]+)$/.exec(token);
-  if (!match) {
+  const match = /^(skt_[0-9A-Za-z]+)_(?:v2\.[A-Za-z0-9_-]{43}\.)?([A-Za-z0-9_-]+)$/.exec(token);
+  if (!match || match[0] !== token) {
     throw new Error("not a valid seekrit service token");
   }
   const keyB64 = match[2];
@@ -328,6 +338,7 @@ var ResolveError = class extends Error {
   }
 };
 async function fetchResolve(opts) {
+  const auth = serviceTokenAuth(opts.token);
   const fetchImpl = opts.fetchImpl ?? fetch;
   const base = opts.apiUrl.replace(/\/+$/, "");
   const params = new URLSearchParams();
@@ -338,7 +349,7 @@ async function fetchResolve(opts) {
     res = await fetchImpl(`${base}/v1/resolve${qs}`, {
       method: "GET",
       headers: {
-        authorization: `Bearer ${opts.token}`,
+        authorization: `Bearer ${auth}`,
         accept: "application/json",
         "user-agent": opts.userAgent ?? "seekrit-github-action"
       }
@@ -361,6 +372,9 @@ async function fetchResolve(opts) {
 // src/main.ts
 async function run() {
   const config = readConfig();
+  const auth = serviceTokenAuth(config.token);
+  setSecret(config.token);
+  setSecret(auth);
   const privateKey = await parseServiceToken(config.token);
   const resolved = await fetchResolve({
     apiUrl: config.apiUrl,

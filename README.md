@@ -5,14 +5,15 @@ decrypted **on the runner**, masked in the logs, and injected into `$GITHUB_ENV`
 subsequent step just sees them as environment variables.
 
 seekrit is end-to-end encrypted: this action decrypts your secrets locally using the private key
-carried by your service token. **The seekrit API never sees plaintext.**
+carried by your service token, and sends the API only the token's separate auth credential.
+**The seekrit API never sees plaintext or your private key.**
 
 ```yaml
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: seekritdev/github-action@v1
+      - uses: seekritdev/github-action@v2
         with:
           token: ${{ secrets.SEEKRIT_TOKEN }}
 
@@ -30,7 +31,7 @@ composed groups.
 
 | Input         | Default                    | Description                                                                                          |
 | ------------- | -------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `token`       | _(required)_               | seekrit service token (`skt_…`). Pass `${{ secrets.SEEKRIT_TOKEN }}`.                                 |
+| `token`       | _(required)_               | seekrit v2 service token (`skt_<id>_v2.…`). Pass `${{ secrets.SEEKRIT_TOKEN }}`.                      |
 | `api-url`     | `https://api.seekrit.dev`  | seekrit API base URL.                                                                                 |
 | `with`        | `""`                       | Group→environment overrides, one `group:env` per line (or comma-separated). Mirrors the CLI `--with`. |
 | `export-env`  | `true`                     | Inject each secret into `$GITHUB_ENV` for subsequent steps.                                           |
@@ -52,7 +53,7 @@ composed groups.
 
 ```yaml
 steps:
-  - uses: seekritdev/github-action@v1
+  - uses: seekritdev/github-action@v2
     with:
       token: ${{ secrets.SEEKRIT_TOKEN }}
   - run: |
@@ -63,7 +64,7 @@ steps:
 ### Namespace with a prefix, and filter
 
 ```yaml
-- uses: seekritdev/github-action@v1
+- uses: seekritdev/github-action@v2
   with:
     token: ${{ secrets.SEEKRIT_TOKEN }}
     prefix: "SEEKRIT_"          # -> $SEEKRIT_DATABASE_URL, ...
@@ -73,7 +74,7 @@ steps:
 ### Compose a group at a specific environment
 
 ```yaml
-- uses: seekritdev/github-action@v1
+- uses: seekritdev/github-action@v2
   with:
     token: ${{ secrets.SEEKRIT_TOKEN }}
     with: |
@@ -85,7 +86,7 @@ steps:
 
 ```yaml
 - id: seekrit
-  uses: seekritdev/github-action@v1
+  uses: seekritdev/github-action@v2
   with:
     token: ${{ secrets.SEEKRIT_TOKEN }}
     export-env: "false"
@@ -99,12 +100,14 @@ steps:
 
 ## How it works
 
-1. The action reads your `skt_…` service token (which _is_ the private key — it is never sent).
+1. The action reads your service token, `skt_<id>_v2.<auth>.<private key>`, and splits it. Only
+   `skt_<id>_v2.<auth>` is ever sent; the private key never leaves the runner.
 2. It calls `GET /v1/resolve`, receiving **ciphertext only**: the ordered secret layers (composed
    groups → application environment) plus a per-layer data key wrapped to the token's public key.
 3. It unwraps each data key and decrypts every secret locally (ECDH P-256 → HKDF-SHA256 →
    AES-256-GCM), applying the same precedence as `seekrit run` — the app environment wins over
-   composed groups.
+   composed groups — then expands [secret references](https://seekrit.dev/docs/guides/references) (`${OTHER_SECRET}`)
+   across the merged set, exactly as every other seekrit client does.
 4. Each value is masked (`::add-mask::`) and written to `$GITHUB_ENV` / step outputs.
 
 Precedence, formats, and the zero-knowledge model are documented at
@@ -129,10 +132,23 @@ Precedence, formats, and the zero-knowledge model are documented at
 Reference a major version so you get non-breaking updates:
 
 ```yaml
-- uses: seekritdev/github-action@v1
+- uses: seekritdev/github-action@v2
 ```
 
-Pin to an exact release (e.g. `@v1.0.0`) or a commit SHA if you require immutability.
+Pin to an exact release (e.g. `@v2.0.0`) or a commit SHA if you require immutability.
+
+### Upgrading from v1
+
+v2 requires a **v2 service token** (`skt_<id>_v2.…`). v1 sent the whole token — private key
+included — as its API credential; v2 sends only the token's auth half, and refuses a legacy token
+before making any request. To upgrade:
+
+1. Mint a replacement service token in the seekrit dashboard, with the same environment and grants.
+2. Update the `SEEKRIT_TOKEN` secret and change `@v1` to `@v2` in the same change.
+3. Confirm the job resolves, then revoke the old token.
+
+v2 also expands secret references (`${OTHER_SECRET}`) in values, which v1 passed through literally.
+Write `$${NAME}` for a literal `${NAME}`.
 
 ## Development
 

@@ -1,10 +1,12 @@
 /**
- * The single network call this action makes: `GET /v1/resolve`, presenting the
- * service token as `Authorization: Bearer skt_…`. The server returns the
- * ordered ciphertext layers + per-principal wrapped DEKs and never sees
- * plaintext (seekrit's zero-knowledge invariant). Response shape mirrors
+ * The single network call this action makes: `GET /v1/resolve`, presenting
+ * only the service token's auth credential as `Authorization: Bearer
+ * skt_<id>_v2.<auth>` — never the private key. The server returns the ordered
+ * ciphertext layers + per-principal wrapped DEKs and never sees plaintext
+ * (seekrit's zero-knowledge invariant). Response shape mirrors
  * `@seekrit/core`'s `ResolveResponse`.
  */
+import { serviceTokenAuth } from "./crypto.js";
 
 /** One `group:env` override, as accepted by the resolve route's `?with=`. */
 export interface GroupOverride {
@@ -66,6 +68,9 @@ export interface ResolveOptions {
 
 /** Fetch and parse the resolve response for the given service token. */
 export async function fetchResolve(opts: ResolveOptions): Promise<ResolveResponse> {
+  // Before anything else: a legacy token carries its private key in the one
+  // string, so it must be refused here rather than sent.
+  const auth = serviceTokenAuth(opts.token);
   const fetchImpl = opts.fetchImpl ?? fetch;
   const base = opts.apiUrl.replace(/\/+$/, "");
   const params = new URLSearchParams();
@@ -77,7 +82,7 @@ export async function fetchResolve(opts: ResolveOptions): Promise<ResolveRespons
     res = await fetchImpl(`${base}/v1/resolve${qs}`, {
       method: "GET",
       headers: {
-        authorization: `Bearer ${opts.token}`,
+        authorization: `Bearer ${auth}`,
         accept: "application/json",
         "user-agent": opts.userAgent ?? "seekrit-github-action",
       },

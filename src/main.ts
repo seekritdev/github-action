@@ -15,13 +15,20 @@ import {
   setSecret,
   warning,
 } from "./actions.js";
-import { parseServiceToken } from "./crypto.js";
+import { parseServiceToken, serviceTokenAuth } from "./crypto.js";
 import { readConfig } from "./inputs.js";
 import { filterValues, materialize } from "./materialize.js";
 import { fetchResolve, ResolveError } from "./resolve.js";
 
 async function run(): Promise<void> {
   const config = readConfig();
+
+  // Only the auth half of the token is sent, and it fails fast on a legacy
+  // token. The runner masks a secret only as a whole string, so register the
+  // half too — always, whatever `mask` says about the resolved values.
+  const auth = serviceTokenAuth(config.token);
+  setSecret(config.token);
+  setSecret(auth);
 
   // The token carries its own private key; parse it before any network call so
   // a malformed token fails fast and clearly.

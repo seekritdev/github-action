@@ -10,10 +10,11 @@ branding:
 inputs:
   token:
     description: >-
-      seekrit service token (skt_…). Store it as an encrypted repository or
-      organization secret (e.g. SEEKRIT_TOKEN) and pass it in from the secrets
-      context. The token is bound to one application environment, so no app/env
-      inputs are needed.
+      seekrit v2 service token (skt_<id>_v2.…). Store it as an encrypted
+      repository or organization secret (e.g. SEEKRIT_TOKEN) and pass it in from
+      the secrets context. Only its auth half is sent to the API; the private key
+      stays on the runner, and legacy (pre-v2) tokens are refused. The token is
+      bound to one application environment, so no app/env inputs are needed.
     required: true
   api-url:
     description: "seekrit API base URL."

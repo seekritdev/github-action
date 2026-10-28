@@ -50,20 +50,36 @@ function splitBlob(blob: string, prefix: string, segments: number): string[] {
 }
 
 // ── service token ─────────────────────────────────────────────────────────
-// Format: `skt_<token id>_<private key pkcs8, base64url>`. The token string
-// carries the principal's private key; the server never holds it.
+// Bundle: `skt_<id>_v2.<32-byte auth secret>.<private key pkcs8, base64url>`
+// Wire:   `skt_<id>_v2.<32-byte auth secret>`
+// One local bundle holds independent authentication and decryption material.
+// Only serviceTokenAuth(token) may be sent to the API; the private key stays on
+// the runner. Legacy `skt_<id>_<pkcs8>` bundles still parse offline but must
+// never be transmitted.
 const TOKEN_PREFIX = "skt";
 
 export function isServiceToken(value: string): boolean {
   return value.startsWith(`${TOKEN_PREFIX}_`);
 }
 
+/** Extract only the independent auth credential. Never fall back to a raw token. */
+export function serviceTokenAuth(token: string): string {
+  const match = /^(skt_[0-9A-Za-z]+_v2\.[A-Za-z0-9_-]{43})(?:\.[A-Za-z0-9_-]+)?$/.exec(token);
+  const auth = match?.[1];
+  if (!match || match[0] !== token || !auth) {
+    throw new Error(
+      "a v2 service token is required for API access; replace legacy tokens in the dashboard",
+    );
+  }
+  return auth;
+}
+
 /** Recover the ECDH P-256 private key carried by a service token. */
 export async function parseServiceToken(token: string): Promise<CryptoKey> {
   // Only the first two underscores are separators — the base64url key segment
   // may itself contain underscores.
-  const match = /^(skt_[0-9A-Za-z]+)_([A-Za-z0-9_-]+)$/.exec(token);
-  if (!match) {
+  const match = /^(skt_[0-9A-Za-z]+)_(?:v2\.[A-Za-z0-9_-]{43}\.)?([A-Za-z0-9_-]+)$/.exec(token);
+  if (!match || match[0] !== token) {
     throw new Error("not a valid seekrit service token");
   }
   const keyB64 = match[2] as string;

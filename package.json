@@ -1,6 +1,6 @@
 {
   "name": "seekrit-github-action",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "private": true,
   "description": "Load secrets from seekrit into your GitHub Actions job environment.",
   "type": "module",
